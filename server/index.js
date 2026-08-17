@@ -3,6 +3,7 @@ import http from "http";
 import path from "path";
 import { fileURLToPath } from "url";
 import { WebSocketServer } from "ws";
+import { buildOrderIntent } from "./trading-adapter.js";
 
 const server = http.createServer(async (req, res) => {
   res.setHeader("access-control-allow-origin", "*");
@@ -50,20 +51,26 @@ const wss = new WebSocketServer({ server, path: "/ws" });
 const port = process.env.PORT || 8787;
 const REFRESH_MS = 90_000;
 const CACHE_TTL_MS = 60_000;
+const ZERO_AFTER_MISSED_UPDATES = 12;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const dataDir = process.env.DATA_DIR || __dirname;
 const tradeLogPath = path.join(dataDir, "sol-bsc-strategy-v2.json");
+
+const CHAIN_CONFIG = {
+  bsc: { native: "BNB", startingBalance: 100, buySize: 0.1 },
+  solana: { native: "SOL", startingBalance: 100, buySize: 0.1 }
+};
+const TAKE_PROFIT_TIERS = [
+  { multiple: 3, sellPct: 0.5, type: "SELL_3X_50", reason: "盈利 3x 卖出 50%" },
+  { multiple: 100, sellPct: 0.25, type: "SELL_100X_25", reason: "盈利 100x 卖出 25%" },
+  { multiple: 1000, sellPct: 0.25, type: "SELL_1000X_25", reason: "盈利 1000x 卖出 25%" }
+];
 
 let lastSnapshot = null;
 let lastError = null;
 let refreshPromise = null;
 let strategyBook = createStrategyBook();
 let lastFetchAt = 0;
-
-const CHAIN_CONFIG = {
-  bsc: { native: "BNB", startingBalance: 100, buySize: 0.1 },
-  solana: { native: "SOL", startingBalance: 100, buySize: 0.1 }
-};
 
 function number(value, fallback = 0) {
   const parsed = Number(value);
@@ -85,7 +92,9 @@ function pct(part, total) {
 }
 
 function multiplier(entry, current) {
-  return entry > 0 && current > 0 ? current / entry : 1;
+  if (entry <= 0) return 1;
+  if (current <= 0) return 0;
+  return current / entry;
 }
 
 function formatMultiplier(value) {
@@ -114,8 +123,7 @@ function createStrategyBook() {
         bsc: { native: "BNB", startingBalance: 100, buySize: 0.1 },
         solana: { native: "SOL", startingBalance: 100, buySize: 0.1 }
       },
-      takeProfitMultiple: 3,
-      takeProfitSellPct: 50,
+      takeProfitTiers: TAKE_PROFIT_TIERS.map(({ multiple, sellPct }) => ({ multiple, sellPct })),
       stopLossMultiple: 0.5
     },
     balances: {
@@ -129,15 +137,23 @@ function createStrategyBook() {
 
 function normalizeStrategyBook(book) {
   const base = createStrategyBook();
+  const positions = Array.isArray(book.positions)
+    ? book.positions.map((position) => ({
+        soldTiers: position.soldTiers ?? (position.takeProfitSold ? { "3": true } : {}),
+        missedUpdates: position.missedUpdates ?? 0,
+        zeroDetected: position.zeroDetected ?? false,
+        ...position
+      }))
+    : [];
   return {
     ...base,
     ...book,
-    strategy: { ...base.strategy, ...(book.strategy ?? {}) },
+    strategy: { ...base.strategy, ...(book.strategy ?? {}), takeProfitTiers: book.strategy?.takeProfitTiers ?? base.strategy.takeProfitTiers },
     balances: {
       bsc: { ...base.balances.bsc, ...(book.balances?.bsc ?? {}) },
       solana: { ...base.balances.solana, ...(book.balances?.solana ?? {}) }
     },
-    positions: Array.isArray(book.positions) ? book.positions : [],
+    positions,
     executions: Array.isArray(book.executions) ? book.executions : []
   };
 }
@@ -162,14 +178,25 @@ function paperBuyReason(token) {
 
 async function updatePaperTrades(tokens, nativePrices = {}) {
   const now = new Date().toISOString();
-  const tokenMap = new Map(tokens.map((token) => [token.address, token]));
+  const openPrices = await fetchOpenPositionPrices();
+  const tokenMap = new Map([...tokens, ...openPrices.tokens].map((token) => [token.address, token]));
+  const missingMap = openPrices.missing;
   let changed = false;
 
   for (const trade of strategyBook.positions) {
     if (trade.status !== "持仓中") continue;
     const token = tokenMap.get(trade.address);
     const nativeUsd = nativePrices[trade.chain] || trade.nativePriceUsd;
-    if (!token?.priceUsd || !nativeUsd) continue;
+    if (!nativeUsd) continue;
+    if (!token?.priceUsd || token.priceUsd <= 0 || token.liquidity <= 0 || missingMap.has(trade.address)) {
+      trade.missedUpdates = (trade.missedUpdates || 0) + 1;
+      if (missingMap.has(trade.address) || token?.priceUsd <= 0 || token?.liquidity <= 0 || trade.missedUpdates >= ZERO_AFTER_MISSED_UPDATES) {
+        closePositionAtZero(trade, now, nativeUsd, missingMap.has(trade.address) ? "交易对消失，按归零清仓" : "价格/流动性归零，清仓");
+        changed = true;
+      }
+      continue;
+    }
+    trade.missedUpdates = 0;
     const currentMultiple = multiplier(trade.entryPriceUsd, token.priceUsd);
     const remainingValueUsd = trade.remainingTokenAmount * token.priceUsd;
     trade.currentPriceUsd = token.priceUsd;
@@ -186,32 +213,20 @@ async function updatePaperTrades(tokens, nativePrices = {}) {
     trade.lastSeenAt = now;
     trade.lastAlphaScore = token.alphaScore;
     trade.lastRiskScore = token.riskScore;
-    if (!trade.takeProfitSold && currentMultiple >= 3) {
-      const sellTokenAmount = trade.initialTokenAmount * 0.5;
-      const proceedsUsd = sellTokenAmount * token.priceUsd;
-      const proceedsNative = proceedsUsd / nativeUsd;
-      trade.remainingTokenAmount = Number((trade.remainingTokenAmount - sellTokenAmount).toFixed(12));
-      trade.takeProfitSold = true;
-      trade.realizedNative = Number((trade.realizedNative + proceedsNative).toFixed(8));
-      trade.realizedUsd = Number((trade.realizedUsd + proceedsUsd).toFixed(6));
-      strategyBook.balances[trade.chain].available = Number((strategyBook.balances[trade.chain].available + proceedsNative).toFixed(8));
-      strategyBook.balances[trade.chain].realized = Number((strategyBook.balances[trade.chain].realized + proceedsNative).toFixed(8));
-      strategyBook.executions.unshift(buildExecution("SELL_3X_HALF", trade, token, now, sellTokenAmount, proceedsNative, proceedsUsd, nativeUsd, "盈利 3x 卖出 50%"));
+    trade.soldTiers = trade.soldTiers ?? {};
+    for (const tier of TAKE_PROFIT_TIERS) {
+      if (currentMultiple >= tier.multiple && !trade.soldTiers[String(tier.multiple)] && trade.remainingTokenAmount > 0) {
+        sellPositionPortion(trade, token, now, nativeUsd, tier);
+      }
+    }
+    if (trade.remainingTokenAmount <= 0 && trade.status === "持仓中") {
+      trade.status = "已止盈完成";
+      trade.exitAt = now;
+      trade.exitReason = "3x/100x/1000x 分批止盈完成";
     }
 
     if (currentMultiple <= 0.5 && trade.remainingTokenAmount > 0) {
-      const sellTokenAmount = trade.remainingTokenAmount;
-      const proceedsUsd = sellTokenAmount * token.priceUsd;
-      const proceedsNative = proceedsUsd / nativeUsd;
-      trade.remainingTokenAmount = 0;
-      trade.status = "已止损";
-      trade.exitAt = now;
-      trade.exitReason = "亏损 50% 清仓";
-      trade.realizedNative = Number((trade.realizedNative + proceedsNative).toFixed(8));
-      trade.realizedUsd = Number((trade.realizedUsd + proceedsUsd).toFixed(6));
-      strategyBook.balances[trade.chain].available = Number((strategyBook.balances[trade.chain].available + proceedsNative).toFixed(8));
-      strategyBook.balances[trade.chain].realized = Number((strategyBook.balances[trade.chain].realized + proceedsNative).toFixed(8));
-      strategyBook.executions.unshift(buildExecution("SELL_STOP_LOSS", trade, token, now, sellTokenAmount, proceedsNative, proceedsUsd, nativeUsd, "亏损 50% 清仓"));
+      closePositionAtMarket(trade, token, now, nativeUsd, "亏损 50% 清仓");
     }
     changed = true;
   }
@@ -277,6 +292,20 @@ async function updatePaperTrades(tokens, nativePrices = {}) {
 }
 
 function buildExecution(type, position, token, timestamp, tokenAmount, nativeAmount, usdAmount, nativePriceUsd, reason) {
+  const side = type === "BUY" ? "buy" : "sell";
+  const orderIntent = buildOrderIntent({
+    side,
+    chain: position.chain,
+    native: position.native,
+    token: position.token,
+    pair: position.pair,
+    address: position.address,
+    tokenAmount: Number(tokenAmount.toFixed(12)),
+    nativeAmount: Number(nativeAmount.toFixed(8)),
+    usdAmount: Number(usdAmount.toFixed(6)),
+    reason,
+    sourceUrl: position.sourceUrl
+  });
   return {
     id: `${type}-${position.address}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
     positionId: position.id,
@@ -295,8 +324,58 @@ function buildExecution(type, position, token, timestamp, tokenAmount, nativeAmo
     usdAmount: Number(usdAmount.toFixed(6)),
     multipleAtExecution: Number(multiplier(position.entryPriceUsd, token.priceUsd).toFixed(4)),
     reason,
-    sourceUrl: position.sourceUrl
+    sourceUrl: position.sourceUrl,
+    executionMode: orderIntent.mode,
+    orderIntent
   };
+}
+
+function sellPositionPortion(trade, token, now, nativeUsd, tier) {
+  const targetTokenAmount = trade.initialTokenAmount * tier.sellPct;
+  const sellTokenAmount = Math.min(trade.remainingTokenAmount, targetTokenAmount);
+  if (sellTokenAmount <= 0) return;
+  const proceedsUsd = sellTokenAmount * token.priceUsd;
+  const proceedsNative = proceedsUsd / nativeUsd;
+  trade.remainingTokenAmount = Number((trade.remainingTokenAmount - sellTokenAmount).toFixed(12));
+  trade.realizedNative = Number((trade.realizedNative + proceedsNative).toFixed(8));
+  trade.realizedUsd = Number((trade.realizedUsd + proceedsUsd).toFixed(6));
+  trade.remainingValueUsd = Number((trade.remainingTokenAmount * token.priceUsd).toFixed(6));
+  trade.remainingValueNative = Number((trade.remainingValueUsd / nativeUsd).toFixed(8));
+  trade.soldTiers[String(tier.multiple)] = true;
+  strategyBook.balances[trade.chain].available = Number((strategyBook.balances[trade.chain].available + proceedsNative).toFixed(8));
+  strategyBook.balances[trade.chain].realized = Number((strategyBook.balances[trade.chain].realized + proceedsNative).toFixed(8));
+  strategyBook.executions.unshift(buildExecution(tier.type, trade, token, now, sellTokenAmount, proceedsNative, proceedsUsd, nativeUsd, tier.reason));
+}
+
+function closePositionAtMarket(trade, token, now, nativeUsd, reason) {
+  const sellTokenAmount = trade.remainingTokenAmount;
+  const proceedsUsd = sellTokenAmount * token.priceUsd;
+  const proceedsNative = nativeUsd > 0 ? proceedsUsd / nativeUsd : 0;
+  trade.remainingTokenAmount = 0;
+  trade.remainingValueUsd = 0;
+  trade.remainingValueNative = 0;
+  trade.status = "已止损";
+  trade.exitAt = now;
+  trade.exitReason = reason;
+  trade.realizedNative = Number((trade.realizedNative + proceedsNative).toFixed(8));
+  trade.realizedUsd = Number((trade.realizedUsd + proceedsUsd).toFixed(6));
+  strategyBook.balances[trade.chain].available = Number((strategyBook.balances[trade.chain].available + proceedsNative).toFixed(8));
+  strategyBook.balances[trade.chain].realized = Number((strategyBook.balances[trade.chain].realized + proceedsNative).toFixed(8));
+  strategyBook.executions.unshift(buildExecution("SELL_STOP_LOSS", trade, token, now, sellTokenAmount, proceedsNative, proceedsUsd, nativeUsd, reason));
+}
+
+function closePositionAtZero(trade, now, nativeUsd, reason) {
+  const zeroToken = { ...trade, priceUsd: 0 };
+  trade.currentPriceUsd = 0;
+  trade.currentMultiple = 0;
+  trade.remainingValueUsd = 0;
+  trade.remainingValueNative = 0;
+  trade.zeroDetected = true;
+  trade.status = "已归零";
+  trade.exitAt = now;
+  trade.exitReason = reason;
+  strategyBook.executions.unshift(buildExecution("SELL_ZERO", trade, zeroToken, now, trade.remainingTokenAmount, 0, 0, nativeUsd, reason));
+  trade.remainingTokenAmount = 0;
 }
 
 function paperTradeSummary() {
@@ -329,7 +408,9 @@ function paperTradeStats() {
   const currentPnls = positions.map((trade) => positionReturnNative(trade));
   const maxPnls = positions.map((trade) => number(trade.maxMultiple, 1) - 1);
   const winners = positions.filter((trade) => positionReturnNative(trade) > 0);
-  const bigWinners = positions.filter((trade) => number(trade.maxMultiple, 1) >= 3);
+  const winners3x = positions.filter((trade) => number(trade.maxMultiple, 1) >= 3);
+  const winners100x = positions.filter((trade) => number(trade.maxMultiple, 1) >= 100);
+  const winners1000x = positions.filter((trade) => number(trade.maxMultiple, 1) >= 1000);
   const losers = positions.filter((trade) => positionReturnNative(trade) < 0);
   const sum = (values) => values.reduce((acc, value) => acc + number(value), 0);
   const avg = (values, fallback = 0) => (values.length ? sum(values) / values.length : fallback);
@@ -352,7 +433,13 @@ function paperTradeStats() {
     closed: closed.length,
     winRate: total ? Number(((winners.length / total) * 100).toFixed(2)) : 0,
     lossRate: total ? Number(((losers.length / total) * 100).toFixed(2)) : 0,
-    bigWinnerRate: total ? Number(((bigWinners.length / total) * 100).toFixed(2)) : 0,
+    bigWinnerRate: total ? Number(((winners3x.length / total) * 100).toFixed(2)) : 0,
+    winner3xCount: winners3x.length,
+    winner100xCount: winners100x.length,
+    winner1000xCount: winners1000x.length,
+    winner3xRate: total ? Number(((winners3x.length / total) * 100).toFixed(2)) : 0,
+    winner100xRate: total ? Number(((winners100x.length / total) * 100).toFixed(2)) : 0,
+    winner1000xRate: total ? Number(((winners1000x.length / total) * 100).toFixed(2)) : 0,
     averageCurrentMultiple: Number(avg(positions.map((trade) => number(trade.currentMultiple, 1)), 1).toFixed(4)),
     averageMaxMultiple: Number(avg(positions.map((trade) => number(trade.maxMultiple, 1)), 1).toFixed(4)),
     totalUnrealizedReturnPct: Number((sum(currentPnls) * 100).toFixed(2)),
@@ -434,6 +521,9 @@ function paperTradesCsv() {
     "entryNativeSpent",
     "realizedNative",
     "remainingValueNative",
+    "soldTiers",
+    "missedUpdates",
+    "zeroDetected",
     "isProfitable",
     "unrealizedReturnPct",
     "maxReturnPct",
@@ -445,6 +535,7 @@ function paperTradesCsv() {
     const ret = positionReturnNative(trade);
     return {
       ...trade,
+      soldTiers: Object.keys(trade.soldTiers ?? {}).join("|"),
       isProfitable: ret > 0,
       unrealizedReturnPct: Number((ret * 100).toFixed(2)),
       maxReturnPct: Number(((maxMultiple - 1) * 100).toFixed(2)),
@@ -473,6 +564,7 @@ function executionsCsv() {
     "nativeAmount",
     "usdAmount",
     "multipleAtExecution",
+    "executionMode",
     "reason",
     "sourceUrl"
   ];
@@ -643,6 +735,113 @@ function bondingLabel(age, reserve) {
   if (age < 60) return { label: "新迁移 <1h", value: 100 };
   if (age < 360) return { label: "新池 <6h", value: 100 };
   return { label: reserve > 0 ? "Pancake/DEX 已建池" : "已建池", value: 100 };
+}
+
+async function fetchOpenPositionPrices() {
+  const open = strategyBook.positions.filter((position) => position.status === "持仓中");
+  const byChain = open.reduce((acc, position) => {
+    if (!acc[position.chain]) acc[position.chain] = [];
+    acc[position.chain].push(position.address);
+    return acc;
+  }, {});
+  const tokens = [];
+  const missing = new Set();
+
+  for (const [chain, addresses] of Object.entries(byChain)) {
+    const unique = [...new Set(addresses)];
+    for (let index = 0; index < unique.length; index += 25) {
+      const chunk = unique.slice(index, index + 25);
+      try {
+        const json = await fetchJson(`https://api.dexscreener.com/latest/dex/pairs/${chain}/${chunk.join(",")}`, 1);
+        const pairs = (json.pairs ?? (json.pair ? [json.pair] : [])).filter(Boolean);
+        const seen = new Set(pairs.map((pair) => pair.pairAddress));
+        for (const address of chunk) {
+          if (!seen.has(address)) missing.add(address);
+        }
+        tokens.push(...pairs.map(pairToToken).filter(Boolean));
+      } catch {
+        for (const address of chunk) {
+          const position = open.find((item) => item.address === address);
+          if (position) position.missedUpdates = (position.missedUpdates || 0) + 1;
+        }
+      }
+    }
+  }
+
+  return { tokens, missing };
+}
+
+function pairToToken(pair) {
+  if (!pair?.pairAddress) return null;
+  const age = ageMinutes(pair.pairCreatedAt);
+  const volumeM5 = number(pair.volume?.m5);
+  const volumeH1 = number(pair.volume?.h1);
+  const txM5 = pair.txns?.m5 ?? {};
+  const fdv = number(pair.marketCap || pair.fdv);
+  const liquidity = number(pair.liquidity?.usd);
+  const scores = scorePool({
+    age,
+    fdv,
+    liquidity,
+    volumeM5,
+    volumeH1,
+    buysM5: number(txM5.buys),
+    sellsM5: number(txM5.sells),
+    buyersM5: number(txM5.buys),
+    sellersM5: number(txM5.sells),
+    priceM5: number(pair.priceChange?.m5)
+  });
+  const curve = bondingLabel(age, liquidity);
+  return {
+    id: pair.pairAddress,
+    chain: pair.chainId === "solana" ? "solana" : "bsc",
+    token: pair.baseToken?.symbol ?? "UNKNOWN",
+    pair: `${pair.baseToken?.symbol ?? "UNKNOWN"}/${pair.quoteToken?.symbol ?? "QUOTE"}`,
+    address: pair.pairAddress,
+    dex: pair.dexId,
+    mc: fdv,
+    liquidity,
+    ageMinutes: age,
+    alphaScore: scores.alphaScore,
+    riskScore: scores.riskScore,
+    narrative: narrativeFor(pair.baseToken?.symbol, pair.baseToken?.name),
+    smartMoney: 0,
+    volumeAcceleration: Number(scores.volumeAcceleration.toFixed(2)),
+    buyPressure: scores.buyPressure,
+    holderGrowth: number(txM5.buys),
+    bondingCurve: curve.value,
+    bondingCurveLabel: curve.label,
+    priceUsd: number(pair.priceUsd),
+    priceChange5m: number(pair.priceChange?.m5),
+    volume5m: volumeM5,
+    volume1h: volumeH1,
+    transactions5m: `${number(txM5.buys)}/${number(txM5.sells)}`,
+    sourceUrl: pair.url,
+    priceSeries: dexSeries(pair, "price"),
+    mcSeries: dexSeries(pair, "mc"),
+    flowSeries: [
+      { t: "24h", value: number(pair.volume?.h24) },
+      { t: "6h", value: number(pair.volume?.h6) },
+      { t: "1h", value: volumeH1 },
+      { t: "5m", value: volumeM5 }
+    ],
+    holders: [
+      { name: "流动性", value: Math.round(liquidity) },
+      { name: "5m成交", value: Math.round(volumeM5) },
+      { name: "1h成交", value: Math.round(volumeH1) }
+    ],
+    wallets: [
+      `真实池地址：${pair.pairAddress}`,
+      `DEX：${pair.dexId}`,
+      `5分钟买/卖笔数：${number(txM5.buys)} / ${number(txM5.sells)}`,
+      "DexScreener 当前接口不返回钱包地址"
+    ],
+    timeline: [
+      { t: "创建", event: pair.pairCreatedAt ? new Date(pair.pairCreatedAt).toLocaleString("zh-CN") : "未知" },
+      { t: "5m", event: `成交量 $${Math.round(volumeM5).toLocaleString("en-US")}，价格变化 ${number(pair.priceChange?.m5).toFixed(2)}%` },
+      { t: "实时", event: `买压 ${scores.buyPressure}%，Alpha ${scores.alphaScore}，Risk ${scores.riskScore}` }
+    ]
+  };
 }
 
 async function geckoSnapshot() {

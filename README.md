@@ -7,8 +7,9 @@ SOL + BSC early-alpha dashboard with a paper-trading strategy ledger.
 - Initial capital: `100 SOL` and `100 BNB`
 - Chains: Solana and BSC
 - Each opportunity buy: `0.1 SOL` or `0.1 BNB`
-- Take profit: sell `50%` at `3x`
+- Take profit: sell `50%` at `3x`, `25%` at `100x`, and `25%` at `1000x`
 - Stop loss: clear remaining position at `0.5x`
+- Missing/zeroed pairs: if a pair disappears, price becomes zero, liquidity becomes zero, or updates repeatedly fail, the position is marked as zeroed and cleared in the ledger
 - Records full buy/sell executions with time, price, token amount, native amount, USD amount, and chart URL
 
 ## Local Run
@@ -31,6 +32,14 @@ Open:
 ```bash
 docker compose up -d --build
 ```
+
+Execution mode defaults to paper trading:
+
+```bash
+EXECUTION_MODE=paper docker compose up -d --build
+```
+
+The strategy engine is structured so live trading can be added in `server/trading-adapter.js` without changing scoring, position accounting, or CSV/statistics output.
 
 Open:
 
