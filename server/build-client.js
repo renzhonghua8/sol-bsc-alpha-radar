@@ -40,6 +40,7 @@ await fs.writeFile(
     </div>
   </main>
   <script>
+    const buildId = "same-origin-api-v2";
     const api = "";
     const wsApi = (window.location.protocol === "https:" ? "wss" : "ws") + "://" + window.location.host + "/ws";
     const fmtUsd = (v) => v ? new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0}).format(v) : "-";
@@ -99,7 +100,7 @@ await fs.writeFile(
         render(await r.json());
         document.getElementById("status").textContent="轮询同步";
       } catch (error) {
-        document.getElementById("status").textContent="API异常";
+        document.getElementById("status").textContent="API异常 " + buildId;
       }
     }
     document.querySelectorAll(".exportLink").forEach(a => a.href = api + a.dataset.path);
