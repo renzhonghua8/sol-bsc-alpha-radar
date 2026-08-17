@@ -92,7 +92,16 @@ await fs.writeFile(
         document.getElementById("detail").innerHTML = '<div class="card"><h2>价格 / 市值曲线</h2>'+renderSpark(selected.mcSeries)+'</div><div class="card"><h2>信号摘要</h2>'+selected.wallets.map(x=>'<p>'+esc(x)+'</p>').join("")+'<p>叙事：'+esc(selected.narrative)+' / '+esc(selected.dex)+' / 真实数据</p>'+selected.timeline.map(x=>'<p>'+esc(x.t)+'：'+esc(x.event)+'</p>').join("")+'</div>';
       }
     }
-    async function load(){ const r = await fetch(api + "/api/snapshot"); render(await r.json()); document.getElementById("status").textContent="轮询同步"; }
+    async function load(){
+      try {
+        const r = await fetch(api + "/api/snapshot");
+        if (!r.ok) throw new Error("API " + r.status);
+        render(await r.json());
+        document.getElementById("status").textContent="轮询同步";
+      } catch (error) {
+        document.getElementById("status").textContent="API异常";
+      }
+    }
     document.querySelectorAll(".exportLink").forEach(a => a.href = api + a.dataset.path);
     load(); setInterval(load, 30000);
     try{ const ws = new WebSocket(wsApi); ws.onopen=()=>{document.getElementById("status").classList.add("live");document.getElementById("status").textContent="WebSocket 实时"}; ws.onmessage=e=>render(JSON.parse(e.data)); }catch{}
