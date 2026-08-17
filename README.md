@@ -47,8 +47,14 @@ Open:
 http://SERVER_IP:5174
 ```
 
-The browser UI connects to the API on the same server at `http://SERVER_IP:8787`.
-Make sure both ports are open in the cloud security group and the server firewall.
+Behind Nginx, the browser UI connects to the API through same-origin paths:
+
+```text
+/api
+/ws
+```
+
+Nginx should proxy those paths to `127.0.0.1:8787`. The browser should not request `http://SERVER_IP:8787` directly in production.
 
 Logs:
 
@@ -88,7 +94,7 @@ cd bsc-early-alpha-radar
 docker compose up -d --build
 ```
 
-If the server has a firewall:
+If the server has a firewall and you are not using Nginx in front of the app:
 
 ```bash
 sudo ufw allow 5174/tcp

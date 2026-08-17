@@ -40,8 +40,8 @@ await fs.writeFile(
     </div>
   </main>
   <script>
-    const apiHost = window.location.hostname || "localhost";
-    const api = "http://" + apiHost + ":8787";
+    const api = "";
+    const wsApi = (window.location.protocol === "https:" ? "wss" : "ws") + "://" + window.location.host + "/ws";
     const fmtUsd = (v) => v ? new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0}).format(v) : "-";
     const fmtPrice = (v) => !v ? "-" : v < 0.0001 ? "$" + Number(v).toExponential(3) : v < 1 ? "$" + Number(v).toFixed(8) : fmtUsd(v);
     const cls = (v, inv=false) => inv ? (v>=70?"bad":v>=45?"warn":"good") : (v>=75?"good":v>=50?"warn":"bad");
@@ -95,7 +95,7 @@ await fs.writeFile(
     async function load(){ const r = await fetch(api + "/api/snapshot"); render(await r.json()); document.getElementById("status").textContent="轮询同步"; }
     document.querySelectorAll(".exportLink").forEach(a => a.href = api + a.dataset.path);
     load(); setInterval(load, 30000);
-    try{ const ws = new WebSocket("ws://" + apiHost + ":8787/ws"); ws.onopen=()=>{document.getElementById("status").classList.add("live");document.getElementById("status").textContent="WebSocket 实时"}; ws.onmessage=e=>render(JSON.parse(e.data)); }catch{}
+    try{ const ws = new WebSocket(wsApi); ws.onopen=()=>{document.getElementById("status").classList.add("live");document.getElementById("status").textContent="WebSocket 实时"}; ws.onmessage=e=>render(JSON.parse(e.data)); }catch{}
   </script>
 </body>
 </html>`

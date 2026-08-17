@@ -32,9 +32,11 @@ import {
 } from "recharts";
 import "./styles.css";
 
-const apiHost = typeof window === "undefined" ? "localhost" : window.location.hostname;
-const api = `http://${apiHost}:8787`;
-const wsApi = `ws://${apiHost}:8787/ws`;
+const api = "";
+const wsApi =
+  typeof window === "undefined"
+    ? "ws://localhost:8787/ws"
+    : `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}/ws`;
 
 function formatUsd(value) {
   if (!value) return "-";
