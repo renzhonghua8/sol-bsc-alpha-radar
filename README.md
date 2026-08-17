@@ -38,6 +38,9 @@ Open:
 http://SERVER_IP:5174
 ```
 
+The browser UI connects to the API on the same server at `http://SERVER_IP:8787`.
+Make sure both ports are open in the cloud security group and the server firewall.
+
 Logs:
 
 ```bash

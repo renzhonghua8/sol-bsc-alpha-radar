@@ -30,7 +30,7 @@ await fs.writeFile(
     <div id="notice"></div>
     <div class="stack">
       <section class="panel"><div class="panelHeader"><h2>Early Alpha 排行榜</h2></div><div class="tableWrap"><table><thead><tr><th>代币</th><th>市值</th><th>Alpha 分</th><th>风险分</th><th>叙事</th><th>聪明钱数</th><th>5分钟成交加速</th><th>买盘压力</th><th>买家增长</th><th>建池状态</th></tr></thead><tbody id="rankBody"></tbody></table></div></section>
-      <section class="panel"><div class="panelHeader"><h2>策略收益统计 / 完整交易记录</h2><div><a class="link" href="http://localhost:8787/api/paper-trades" target="_blank">JSON</a><a class="link" href="http://localhost:8787/api/paper-trades.csv" target="_blank">仓位CSV</a><a class="link" href="http://localhost:8787/api/executions.csv" target="_blank">流水CSV</a></div></div><div id="paperTrades"></div></section>
+      <section class="panel"><div class="panelHeader"><h2>策略收益统计 / 完整交易记录</h2><div><a class="link exportLink" data-path="/api/paper-trades" target="_blank">JSON</a><a class="link exportLink" data-path="/api/paper-trades.csv" target="_blank">仓位CSV</a><a class="link exportLink" data-path="/api/executions.csv" target="_blank">流水CSV</a></div></div><div id="paperTrades"></div></section>
       <div class="grid3">
         <section class="panel"><div class="panelHeader"><h2>聪明钱 / 重复买入钱包</h2></div><div class="list" id="smartMoney"></div></section>
         <section class="panel"><div class="panelHeader"><h2>Breakout / 异动</h2></div><div class="signals" id="breakouts"></div></section>
@@ -40,7 +40,8 @@ await fs.writeFile(
     </div>
   </main>
   <script>
-    const api = "http://localhost:8787";
+    const apiHost = window.location.hostname || "localhost";
+    const api = "http://" + apiHost + ":8787";
     const fmtUsd = (v) => v ? new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0}).format(v) : "-";
     const fmtPrice = (v) => !v ? "-" : v < 0.0001 ? "$" + Number(v).toExponential(3) : v < 1 ? "$" + Number(v).toFixed(8) : fmtUsd(v);
     const cls = (v, inv=false) => inv ? (v>=70?"bad":v>=45?"warn":"good") : (v>=75?"good":v>=50?"warn":"bad");
@@ -92,8 +93,9 @@ await fs.writeFile(
       }
     }
     async function load(){ const r = await fetch(api + "/api/snapshot"); render(await r.json()); document.getElementById("status").textContent="轮询同步"; }
+    document.querySelectorAll(".exportLink").forEach(a => a.href = api + a.dataset.path);
     load(); setInterval(load, 30000);
-    try{ const ws = new WebSocket("ws://localhost:8787/ws"); ws.onopen=()=>{document.getElementById("status").classList.add("live");document.getElementById("status").textContent="WebSocket 实时"}; ws.onmessage=e=>render(JSON.parse(e.data)); }catch{}
+    try{ const ws = new WebSocket("ws://" + apiHost + ":8787/ws"); ws.onopen=()=>{document.getElementById("status").classList.add("live");document.getElementById("status").textContent="WebSocket 实时"}; ws.onmessage=e=>render(JSON.parse(e.data)); }catch{}
   </script>
 </body>
 </html>`
