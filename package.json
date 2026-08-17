@@ -1,0 +1,27 @@
+{
+  "name": "bsc-early-alpha-radar",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently \"npm:server\" \"npm:client\"",
+    "client": "npm run build && node server/static.js",
+    "server": "node server/index.js",
+    "build": "node server/build-client.js",
+    "preview": "vite preview --host 0.0.0.0 --port 4173"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "^5.1.4",
+    "concurrently": "^9.2.0",
+    "express": "^4.19.2",
+    "lucide-react": "^0.468.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "recharts": "^3.10.1",
+    "vite": "^7.3.6",
+    "ws": "^8.17.1"
+  },
+  "devDependencies": {
+    "playwright": "^1.62.1"
+  }
+}

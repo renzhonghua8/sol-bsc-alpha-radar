@@ -1,0 +1,9 @@
+node_modules
+dist
+.git
+.DS_Store
+.env
+*.log
+server/paper-trades.json
+server/sol-bsc-strategy-v2.json
+data

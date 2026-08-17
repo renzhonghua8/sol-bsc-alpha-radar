@@ -1,0 +1,17 @@
+services:
+  radar:
+    build: .
+    container_name: bsc-early-alpha-radar
+    restart: unless-stopped
+    environment:
+      DATA_DIR: /app/data
+      PORT: 8787
+      CLIENT_PORT: 5174
+    ports:
+      - "5174:5174"
+      - "8787:8787"
+    volumes:
+      - radar-data:/app/data
+
+volumes:
+  radar-data:

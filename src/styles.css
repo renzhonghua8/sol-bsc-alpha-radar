@@ -1,0 +1,588 @@
+:root {
+  color-scheme: dark;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #070b10;
+  color: #e7eef7;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  background:
+    radial-gradient(circle at 18% -8%, rgba(18, 214, 160, 0.1), transparent 28rem),
+    linear-gradient(135deg, #070b10 0%, #0d141f 55%, #080b0f 100%);
+}
+
+button {
+  font: inherit;
+}
+
+.terminal {
+  width: min(1760px, 100%);
+  margin: 0 auto;
+  padding: 22px;
+}
+
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: center;
+  padding: 10px 0 18px;
+}
+
+.eyebrow {
+  color: #12d6a0;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+
+h1 {
+  margin-top: 4px;
+  font-size: 28px;
+  line-height: 1.15;
+}
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #273546;
+  background: #0c131d;
+  min-height: 38px;
+  padding: 0 12px;
+  border-radius: 8px;
+  color: #98a9bd;
+  white-space: nowrap;
+}
+
+.status.live {
+  border-color: rgba(18, 214, 160, 0.45);
+  color: #12d6a0;
+}
+
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(150px, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.metric,
+.panel {
+  border: 1px solid #1d2a39;
+  background: rgba(9, 15, 23, 0.88);
+  box-shadow: 0 16px 50px rgba(0, 0, 0, 0.22);
+}
+
+.metric {
+  min-height: 78px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 14px;
+  border-radius: 8px;
+}
+
+.metric svg {
+  color: #3aa0ff;
+}
+
+.metric span,
+.listRow span,
+.riskItem span,
+.chartTitle,
+.timeItem span {
+  color: #7c8da5;
+  font-size: 12px;
+}
+
+.metric strong {
+  display: block;
+  margin-top: 5px;
+  font-size: 20px;
+}
+
+.good {
+  color: #12d6a0;
+}
+
+.warn {
+  color: #f7c948;
+}
+
+.bad {
+  color: #ff6b6b;
+}
+
+.info {
+  color: #3aa0ff;
+}
+
+.dashboardStack {
+  display: grid;
+  gap: 14px;
+}
+
+.insightGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  align-items: start;
+}
+
+.panel {
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.panelHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid #1d2a39;
+  background: #0b111a;
+}
+
+.panelHeader > div {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.panelHeader svg {
+  color: #12d6a0;
+}
+
+h2 {
+  font-size: 15px;
+  line-height: 1.2;
+}
+
+.tableWrap {
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 1180px;
+}
+
+th,
+td {
+  padding: 12px 11px;
+  border-bottom: 1px solid #162231;
+  text-align: left;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+th {
+  color: #7c8da5;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+tbody tr {
+  cursor: pointer;
+}
+
+tbody tr:hover,
+tbody tr.selected {
+  background: rgba(58, 160, 255, 0.08);
+}
+
+.tokenButton {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.tokenButton span {
+  display: block;
+  font-weight: 800;
+}
+
+.tokenButton small {
+  color: #7c8da5;
+}
+
+.score,
+.tag,
+.tagCloud span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  border-radius: 6px;
+  padding: 0 8px;
+  font-weight: 800;
+  background: #101924;
+}
+
+.tag {
+  color: #c7d3e3;
+  border: 1px solid #263547;
+}
+
+.barMeter {
+  display: inline-flex;
+  width: 72px;
+  height: 6px;
+  overflow: hidden;
+  margin-right: 8px;
+  border-radius: 99px;
+  background: #192535;
+  vertical-align: middle;
+}
+
+.barMeter i {
+  display: block;
+  background: #12d6a0;
+}
+
+.barMeter.curve i {
+  background: #3aa0ff;
+}
+
+.list,
+.riskList {
+  display: grid;
+}
+
+.tradeStats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  padding: 13px;
+}
+
+.tradeStats > div,
+.bestTrade {
+  border: 1px solid #1d2a39;
+  background: #0d141f;
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.tradeStats span,
+.tradeStats small,
+.bestTrade span,
+.tradeTable small {
+  display: block;
+  color: #7c8da5;
+  font-size: 12px;
+}
+
+.tradeStats strong {
+  display: block;
+  margin: 5px 0;
+  font-size: 22px;
+}
+
+.bestTrade {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 0 13px 13px;
+}
+
+.bestTrade svg {
+  color: #f7c948;
+  flex: 0 0 auto;
+}
+
+.bestTrade strong {
+  display: block;
+  margin-bottom: 5px;
+}
+
+.tradeTableWrap {
+  overflow-x: auto;
+  border-top: 1px solid #162231;
+}
+
+.tradeTable {
+  min-width: 980px;
+}
+
+.tradeToken {
+  display: block;
+  font-weight: 800;
+}
+
+.statusPill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 23px;
+  padding: 0 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 800;
+  background: #101924;
+}
+
+.statusPill.open {
+  color: #12d6a0;
+  border: 1px solid rgba(18, 214, 160, 0.28);
+}
+
+.statusPill.closed {
+  color: #f7c948;
+  border: 1px solid rgba(247, 201, 72, 0.28);
+}
+
+.empty,
+.notice {
+  color: #98a9bd;
+  font-size: 13px;
+  line-height: 1.45;
+  padding: 14px 15px;
+}
+
+.notice {
+  border: 1px solid rgba(247, 201, 72, 0.32);
+  background: rgba(247, 201, 72, 0.08);
+  border-radius: 8px;
+  margin-bottom: 14px;
+  color: #f7c948;
+}
+
+.listRow,
+.riskItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 13px 15px;
+  border-bottom: 1px solid #162231;
+}
+
+.listRow strong,
+.riskItem strong {
+  display: block;
+  font-size: 13px;
+}
+
+.rightStack {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.rightStack b {
+  color: #12d6a0;
+}
+
+.signalGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  padding: 12px;
+}
+
+.signal {
+  min-height: 110px;
+  border: 1px solid #1d2a39;
+  border-radius: 8px;
+  padding: 12px;
+  background: #0d141f;
+}
+
+.signal span {
+  color: #f7c948;
+  font-weight: 900;
+  font-size: 12px;
+}
+
+.signal strong {
+  display: block;
+  margin-top: 8px;
+}
+
+.signal p {
+  margin-top: 5px;
+  color: #c7d3e3;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.signal small {
+  display: block;
+  margin-top: 7px;
+  color: #7c8da5;
+}
+
+.riskItem {
+  justify-content: flex-start;
+}
+
+.riskItem b {
+  margin-left: auto;
+  font-size: 12px;
+}
+
+.riskItem.high svg,
+.riskItem.high b {
+  color: #ff6b6b;
+}
+
+.riskItem.medium svg,
+.riskItem.medium b {
+  color: #f7c948;
+}
+
+.riskItem.low svg,
+.riskItem.low b {
+  color: #12d6a0;
+}
+
+.detail {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(260px, 0.65fr) minmax(260px, 0.65fr);
+  gap: 14px;
+  padding: 14px;
+}
+
+.chartBlock,
+.detailText,
+.timeline {
+  border: 1px solid #1d2a39;
+  background: #0b111a;
+  border-radius: 8px;
+  padding: 13px;
+  min-width: 0;
+}
+
+.wide {
+  grid-row: span 2;
+}
+
+.chartTitle {
+  margin-bottom: 8px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.legend,
+.tagCloud {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.legend span {
+  color: #98a9bd;
+  font-size: 12px;
+}
+
+.legend i {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 5px;
+  border-radius: 50%;
+}
+
+.detailText {
+  display: grid;
+  gap: 16px;
+}
+
+h3 {
+  margin-bottom: 10px;
+  font-size: 13px;
+  color: #e7eef7;
+}
+
+.detailText p {
+  margin-top: 8px;
+  color: #98a9bd;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.tagCloud span {
+  color: #12d6a0;
+  border: 1px solid rgba(18, 214, 160, 0.28);
+}
+
+.timeItem {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid #162231;
+}
+
+.timeItem:last-child {
+  border-bottom: 0;
+}
+
+.timeItem p {
+  color: #c7d3e3;
+  font-size: 13px;
+}
+
+@media (max-width: 1180px) {
+  .metrics {
+    grid-template-columns: repeat(3, minmax(150px, 1fr));
+  }
+
+  .insightGrid,
+  .detail {
+    grid-template-columns: 1fr;
+  }
+
+  .wide {
+    grid-row: auto;
+  }
+}
+
+@media (max-width: 680px) {
+  .terminal {
+    padding: 14px;
+  }
+
+  .topbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  h1 {
+    font-size: 23px;
+  }
+
+  .metrics,
+  .signalGrid,
+  .tradeStats {
+    grid-template-columns: 1fr;
+  }
+
+  .metric {
+    min-height: 66px;
+  }
+
+  .listRow,
+  .riskItem {
+    align-items: flex-start;
+  }
+}
